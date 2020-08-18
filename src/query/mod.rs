@@ -1,5 +1,6 @@
 use bson::Document;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Operator<A, B> {
   Or { left: A, right: B },
@@ -19,6 +20,7 @@ pub enum Operand<A> {
 }
 
 #[allow(unused_macros)]
+#[macro_export]
 macro_rules! query {
   ( $key:tt == $value:tt ) => {{ Operand::Eq { field: $key.to_owned(), value: $value } }};
   ( $key:tt != $value:tt ) => {{ Operand::Neq { field: $key.to_owned(), value: $value } }};
