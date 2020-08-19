@@ -1,14 +1,12 @@
-use bson::Document;
-
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operator<A, B> {
   Or { left: A, right: B },
   And { left: A, right: B }
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operand<A> {
   Eq { field: String, value: A },
   Neq { field: String, value: A },
@@ -22,39 +20,33 @@ pub enum Operand<A> {
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! query {
+  ( ..$lhs:tt && $($rest:tt)+ ) => {{ Operator::And { left: $lhs, right: query!($($rest)*) } }};
+  ( ..$lhs:expr; && $($rest:tt)+ ) => {{ Operator::And { left: $lhs, right: query!($($rest)*) } }};
+  ( ..$lhs:tt || $($rest:tt)+ ) => {{ Operator::Or { left: $lhs, right: query!($($rest)*) } }};
+  ( ..$lhs:expr; || $($rest:tt)+ ) => {{ Operator::Or { left: $lhs, right: query!($($rest)*) } }};
   ( $key:tt == $value:tt ) => {{ Operand::Eq { field: $key.to_owned(), value: $value } }};
+  ( $key:tt == $value:expr; ) => {{ Operand::Eq { field: $key.to_owned(), value: $value } }};
   ( $key:tt != $value:tt ) => {{ Operand::Neq { field: $key.to_owned(), value: $value } }};
+  ( $key:tt != $value:expr; ) => {{ Operand::Neq { field: $key.to_owned(), value: $value } }};
   ( $key:tt > $value:tt ) => {{ Operand::Gt { field: $key.to_owned(), value: $value } }};
+  ( $key:tt > $value:expr; ) => {{ Operand::Gt { field: $key.to_owned(), value: $value } }};
   ( $key:tt >= $value:tt ) => {{ Operand::GtE { field: $key.to_owned(), value: $value } }};
+  ( $key:tt >= $value:expr; ) => {{ Operand::GtE { field: $key.to_owned(), value: $value } }};
   ( $key:tt < $value:tt ) => {{ Operand::Lt { field: $key.to_owned(), value: $value } }};
+  ( $key:tt < $value:expr; ) => {{ Operand::Lt { field: $key.to_owned(), value: $value } }};
   ( $key:tt >= $value:tt ) => {{ Operand::LtE { field: $key.to_owned(), value: $value } }};
+  ( $key:tt >= $value:expr; ) => {{ Operand::LtE { field: $key.to_owned(), value: $value } }};
   ( $key:tt %% $value:tt ) => {{ Operand::Rx { field: $key.to_owned(), value: $value } }};
+  ( $key:tt %% $value:expr; ) => {{ Operand::Rx { field: $key.to_owned(), value: $value } }};
   ( $key:tt $op:tt $value:tt && $($rest:tt)+ ) => {{ Operator::And { left: query!($key $op $value), right: query!($($rest)*) } }};
+  ( $key:tt $op:tt $value:expr; && $($rest:tt)+ ) => {{ Operator::And { left: query!($key $op $value), right: query!($($rest)*) } }};
   ( $key:tt $op:tt $value:tt || $($rest:tt)+ ) => {{ Operator::Or { left: query!($key $op $value), right: query!($($rest)*) } }};
-  ( ...$lhs:tt && $($rest:tt)+ ) => {{ Operator::And { left: $lhs, right: query!($($rest)*) } }};
-  ( ...$lhs:tt || $($rest:tt)+ ) => {{ Operator::Or { left: $lhs, right: query!($($rest)*) } }};
+  ( $key:tt $op:tt $value:expr; || $($rest:tt)+ ) => {{ Operator::Or { left: query!($key $op $value), right: query!($($rest)*) } }};
   ( ($($lhs:tt)+) && $($rhs:tt)+ ) => {{ Operator::And { left: query!($($lhs)*), right: query!($($rhs)*) } }};
   ( ($($lhs:tt)+) || $($rhs:tt)+ ) => {{ Operator::Or { left: query!($($lhs)*), right: query!($($rhs)*) } }};
   ( $($lhs:tt)+ && ($($rhs:tt)+) ) => {{ Operator::And { left: query!($($lhs)*), right: query!($($rhs)*) } }};
   ( $($lhs:tt)+ || ($($rhs:tt)+) ) => {{ Operator::Or { left: query!($($lhs)*), right: query!($($rhs)*) } }};
   ( ($($qq:tt)+) ) => {{ query!($($qq)*) }};
-}
-
-
-pub trait FromOperand {
-  fn from_op(self: &Self, op: &str) -> Document;
-}
-impl FromOperand for i32 {
-  fn from_op(self: &Self, op: &str) -> Document { doc!(op: self) }
-}
-impl FromOperand for String {
-  fn from_op(self: &Self, op: &str) -> Document { doc!(op: self) }
-}
-impl FromOperand for &str {
-  fn from_op(self: &Self, op: &str) -> Document { doc!(op: self) }
-}
-impl FromOperand for bool {
-  fn from_op(self: &Self, op: &str) -> Document { doc!(op: self) }
 }
 
 pub enum QueryType {
@@ -80,32 +72,19 @@ impl <A, B> Query<A, B> for Operator<A, B> {
   fn query_type(self) -> QueryType { QueryType::Operator }
 }
 
-pub trait ToBson {
-  fn to_bson(self) -> Document;
-}
-impl <A> ToBson for Operand<A> where A: FromOperand {
-  fn to_bson(self) -> Document {
-    match self {
-      Operand::Eq { field, value } => doc!( field : value.from_op("$eq")),
-      Operand::Neq { field, value } => doc!( field : value.from_op("$neq")),
-      Operand::Gt { field, value } => doc!( field : value.from_op("$gt")),
-      Operand::GtE { field, value } => doc!( field : value.from_op("$gte")),
-      Operand::Lt { field, value } => doc!( field : value.from_op("$lt")),
-      Operand::LtE { field, value } => doc!( field : value.from_op("$lte")),
-      Operand::Rx { field, value } => doc!( field : value.from_op("$regex")),
-    }  
+#[cfg(test)]
+mod test {
+  use crate::query::*;
+  #[test]
+  fn still_works() {
+    let q = query!("deleted" == false && "b" == 5);
+    let q2 = query!(..q.clone(); || "c" == 7);
+    let q3 = query!(..q.clone(); && ("a" == 5 || "b" < 5));
+    let q_r = Operator::And { left: Operand::Eq { field: "deleted".to_owned(), value: false }, right: Operand::Eq { field: "b".to_owned(), value: 5 } };
+    let q2_r = Operator::Or { left: q_r.clone(), right: Operand::Eq { field: "c".to_owned(), value: 7 }};
+    let q3_r = Operator::And { left: q_r.clone(), right: Operator::Or { left: Operand::Eq { field: "a".to_owned(), value: 5 }, right: Operand::Lt { field: "b".to_owned(), value: 5 }}};
+    assert_eq!(q, q_r);
+    assert_eq!(q2, q2_r);
+    assert_eq!(q3, q3_r);
   }
-}
-
-impl <A, B> ToBson for Operator<A, B> where A: ToBson, B: ToBson {
-  fn to_bson(self) -> Document {
-    match self {
-      Operator::And { left, right } => doc!("$and": [ left.to_bson() , right.to_bson() ]),
-      Operator::Or { left, right } => doc!("$or": [ left.to_bson() , right.to_bson() ]),
-    }
-  }
-}
-
-pub fn to_bson<Q>(query: Q) -> Document where Q: ToBson {
-  query.to_bson()
 }

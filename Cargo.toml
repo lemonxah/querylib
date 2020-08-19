@@ -9,6 +9,10 @@ homepage = "https://github.com/lemonxah/querylib"
 documentation = "https://docs.rs/querylib/0.1.0/querylib/"
 repository = "https://github.com/lemonxah/querylib"
 
+[features]
+default = []
+
+mongo = ["bson"]
+
 [dependencies]
-bson = "1.0.0"
-serde = "1.0.115"
+bson = { version = "1.0.0", optional = true }
