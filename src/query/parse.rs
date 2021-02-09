@@ -354,7 +354,7 @@ impl Reader<Token, TokenError> for IdentifierReader {
               TokenMeta::new_state_meta(current, next),
               TokenValue::Bool(false),
             )),
-            val => ReaderResult::Some(Token::new(
+            _ => ReaderResult::Some(Token::new(
               TokenMeta::new_state_meta(current, next),
               TokenValue::Identifier(string),
             ))
