@@ -467,13 +467,13 @@ mod parse_test {
   use crate::query::*;
   #[test]
   fn lexer_works() {
-    let squery = "deleted == false && b == 5 && (a == 5 || b < 5)";
+    let squery = "deleted == false && b.bah.h1 == 5 && (a == 5 || b < 5)";
     let query = parse::from_str(squery);
     dbg!(&query);
     let q_r = Query::And { 
       left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
       right: Box::new(Query::And { 
-        left: Box::new(Query::Eq { field: "b".to_owned(), value: 5.into() }), 
+        left: Box::new(Query::Eq { field: "b.bah.h1".to_owned(), value: 5.into() }), 
         right: Box::new(Query::Or { 
           left: Box::new(Query::Eq { field: "a".to_owned(), value: 5.into() }), 
           right: Box::new(Query::Lt { field: "b".to_owned(), value: 5.into() })
