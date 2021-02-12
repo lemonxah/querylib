@@ -334,7 +334,7 @@ impl Reader<Token, TokenError> for IdentifierReader {
   fn read(&self, _reader: &Readers<Token, TokenError>, input: &mut dyn Input, current: &State, next: &mut State) -> ReaderResult<Token, TokenError> {
     match input.read(next) {
       Some(ch) => {
-        if ch.is_alphabetic() {
+        if ch.is_alphabetic() || ch == '_' {
           let mut string = String::new();
           string.push(ch);
           while let Some(ch) = input.peek(next, 0) {
@@ -467,13 +467,13 @@ mod parse_test {
   use crate::query::*;
   #[test]
   fn lexer_works() {
-    let squery = "deleted == false && b.bah.h1 == 5 && (a == 5 || b < 5)";
+    let squery = "deleted == false && _b.bah.h1 == 5 && (a == 5 || b < 5)";
     let query = parse::from_str(squery);
     dbg!(&query);
     let q_r = Query::And { 
       left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
       right: Box::new(Query::And { 
-        left: Box::new(Query::Eq { field: "b.bah.h1".to_owned(), value: 5.into() }), 
+        left: Box::new(Query::Eq { field: "_b.bah.h1".to_owned(), value: 5.into() }), 
         right: Box::new(Query::Or { 
           left: Box::new(Query::Eq { field: "a".to_owned(), value: 5.into() }), 
           right: Box::new(Query::Lt { field: "b".to_owned(), value: 5.into() })
