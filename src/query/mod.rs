@@ -7,7 +7,67 @@ pub enum Value {
   Float(f64),
   String(String),
   Bool(bool),
+  Array(Box<Vec<Value>>),
   None,
+}
+
+impl Value {
+  pub fn get_number(&self) -> Option<i64> {
+    match self {
+      Value::Number(n) => Some(*n),
+      _ => None,
+    }
+  }
+  pub fn get_string(&self) -> Option<String> {
+    match self {
+      Value::String(s) => Some(s.clone()),
+      _ => None,
+    }
+  }
+  pub fn get_float(&self) -> Option<f64> {
+    match self {
+      Value::Float(f) => Some(*f),
+      _ => None,
+    }
+  }
+}
+
+macro_rules! from_vec_value {
+  ($t:ident) => {
+    impl From<Vec<$t>> for Value {
+      fn from(a: Vec<$t>) -> Value {
+        Value::Array(Box::new(a.into_iter().map(|v| v.into()).collect::<Vec<Value>>()))
+      }
+    }
+  };
+}
+
+from_vec_value!(i64);
+from_vec_value!(f64);
+from_vec_value!(String);
+
+impl From<Vec<&str>> for Value {
+  fn from(a: Vec<&str>) -> Value {
+    Value::Array(Box::new(a.into_iter().map(|v| v.into()).collect::<Vec<Value>>()))
+  }
+}
+
+impl From<isize> for Value {
+  fn from(i: isize) -> Value {
+    Value::Number(i as i64)
+  }
+}
+
+impl From<usize> for Value {
+  fn from(i: usize) -> Value {
+    Value::Number(i as i64)
+  }
+}
+
+impl From<i32> for Value {
+  fn from(i: i32) -> Value {
+    Value::Number(i as i64)
+  }
 }
 
 impl From<i64> for Value {
@@ -25,6 +85,12 @@ impl From<f64> for Value {
 impl From<String> for Value {
   fn from(v: String) -> Value {
     Value::String(v)
+  }
+}
+
+impl From<&str> for Value {
+  fn from(v: &str) -> Value {
+    Value::String(v.to_owned())
   }
 }
 
@@ -46,6 +112,8 @@ pub enum Query {
   Lt { field: String, value: Value },
   LtE { field: String, value: Value },
   Rx { field: String, value: Value },
+  In { field: String, value: Value },
+  Contains { field: String, value: Value },
   None,
 }
 
@@ -56,6 +124,13 @@ macro_rules! query {
   ( ..$lhs:expr; && $($rest:tt)+ ) => {{ Query::And { left: Box::new($lhs), right: Box::new(query!($($rest)*)) } }};
   ( ..$lhs:tt || $($rest:tt)+ ) => {{ Query::Or { left: Box::new($lhs), right: Box::new(query!($($rest)*)) } }};
   ( ..$lhs:expr; || $($rest:tt)+ ) => {{ Query::Or { left: Box::new($lhs), right: Box::new(query!($($rest)*)) } }};
+  ( $key:tt in [ $($e:expr),* ] ) => {{
+    let mut _temp = ::std::vec::Vec::new();
+    $(_temp.push($e);)*
+    Query::In { field: $key.to_owned(), value: _temp.into() }
+  }};
+  ( $key:tt contains $value:tt ) => {{ Query::Contains { field: $key.to_owned(), value: $value.into() } }};
+  ( $key:tt contains $value:expr; ) => {{ Query::Contains { field: $key.to_owned(), value: $value.into() } }};
   ( $key:tt == $value:tt ) => {{ Query::Eq { field: $key.to_owned(), value: $value.into() } }};
   ( $key:tt == $value:expr; ) => {{ Query::Eq { field: $key.to_owned(), value: $value.into() } }};
   ( $key:tt != $value:tt ) => {{ Query::Neq { field: $key.to_owned(), value: $value.into() } }};
@@ -82,7 +157,7 @@ macro_rules! query {
 }
 
 #[cfg(test)]
-mod query_test {
+mod test {
   use crate::query::*;
   #[test]
   fn query_composition() {
@@ -95,5 +170,31 @@ mod query_test {
     assert_eq!(q, q_r);
     assert_eq!(q2, q2_r);
     assert_eq!(q3, q3_r);
+  }
+
+  #[test]
+  fn query_in() {
+    let q = query!("_id" in ["123", "456","789"] && "deleted" == false);
+    let q_r = Query::And {
+      left: Box::new(Query::In { field: "_id".to_owned(), value: vec!["123".to_owned(),"456".to_owned(),"789".to_owned()].into() }),
+      right: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() })
+    };
+    let q2 = query!("_id" in [123, 456,789] && "deleted" == false);
+    let q2_r = Query::And {
+      left: Box::new(Query::In { field: "_id".to_owned(), value: vec![123,456,789].into() }),
+      right: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() })
+    };
+    assert_eq!(q, q_r);
+    assert_eq!(q2, q2_r);
+  }
+
+  #[test]
+  fn query_contains() {
+    let q = query!("deleted" == false && "countries" contains "za");
+    let q_r = Query::And {
+      left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
+      right: Box::new(Query::Contains { field: "countries".to_owned(), value: "za".to_owned().into() }),
+    };
+    assert_eq!(q, q_r);
   }
 }

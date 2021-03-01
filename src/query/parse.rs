@@ -19,6 +19,8 @@ pub enum Operand {
   Lt,
   LtE,
   Rx,
+  In,
+  Contains,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +29,8 @@ pub enum TokenValue {
   Float(f64),
   String(String),
   Bool(bool),
+
+  Array(LinkedList<TokenValue>),
 
   Operand(Operand),
   Operator(Operator),
@@ -41,10 +45,10 @@ impl From<TokenValue> for Value {
       TokenValue::Float(f) => Value::Float(f),
       TokenValue::String(s) => Value::String(s),
       TokenValue::Bool(b) => Value::Bool(b),
-      none => {
-        dbg!("none?",none);
-        Value::None
-      }
+      TokenValue::Array(l) => Value::Array(Box::new(l.into_iter().map(|v| {
+        v.into()
+      }).collect())),
+      _ => Value::None,
     }
   }
 }
@@ -59,6 +63,18 @@ impl fmt::Display for TokenValue {
       &TokenValue::Operand(ref s) => write!(f, ":{:?}", s),
       &TokenValue::Operator(ref s) => write!(f, ":{:?}", s),
       &TokenValue::Identifier(ref s) => write!(f, "{}", s),
+      &TokenValue::Array(ref array) => {
+        f.write_char('[')?;
+        let mut index = 0;
+        for token in array {
+          write!(f, "{}", token)?;
+          index += 1;
+          if index < array.len() {
+            f.write_str(", ")?;
+          }
+        }
+        f.write_char(']')
+      }
       &TokenValue::Grouped(ref grouped) => {
         f.write_char('(')?;
         let mut index = 0;
@@ -178,6 +194,22 @@ impl Reader<Token, TokenError> for OperandReader {
     match input.read(next) {
       Some(ch) => {
         match ch {
+          'i' => {
+            match input.peek(next, 0) {
+              Some(ch) => {
+                if ch == 'n' {
+                  input.read(next);
+                  ReaderResult::Some(Token::new(
+                    TokenMeta::new_state_meta(current, next),
+                    TokenValue::Operand(Operand::In))
+                  )
+                } else {
+                  ReaderResult::None
+                }
+              },
+              None => ReaderResult::None,
+            }
+          },
           '=' => {
             match input.peek(next, 0) {
               Some(ch) => {
@@ -346,6 +378,14 @@ impl Reader<Token, TokenError> for IdentifierReader {
             }
           }
           match string.as_str() {
+            "contains" => ReaderResult::Some(Token::new(
+              TokenMeta::new_state_meta(current, next),
+              TokenValue::Operand(Operand::Contains)
+            )),
+            "in" => ReaderResult::Some(Token::new(
+              TokenMeta::new_state_meta(current, next),
+              TokenValue::Operand(Operand::In)
+            )),
             "true" => ReaderResult::Some(Token::new(
               TokenMeta::new_state_meta(current, next),
               TokenValue::Bool(true),
@@ -410,6 +450,61 @@ impl Reader<Token, TokenError> for GroupedReader {
   }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct ArrayReader;
+
+impl Reader<Token, TokenError> for ArrayReader {
+  fn read(&self, _readers: &Readers<Token, TokenError>, input: &mut dyn Input, current: &State, next: &mut State) -> ReaderResult<Token, TokenError> {
+    match input.read(next) {
+      Some(ch) => {
+        if ch == '[' {
+          let mut array = LinkedList::new();
+          while let Some(ch) = input.read(next) {
+            if ch == '\'' {
+              let mut string = String::new();
+              while let Some(ch) = input.read(next) {
+                if ch == '\'' {
+                  break;
+                } else {
+                  string.push(ch);
+                }
+              }
+              array.push_back(TokenValue::String(string));
+            } else if ch.is_numeric() {
+              let mut string = String::new();
+              string.push(ch);
+              while let Some(ch) = input.peek(next, 0) {
+                if ch.is_numeric() || ch == '.' {
+                  input.read(next);
+                  string.push(ch);
+                } else {
+                  break;
+                }
+              }
+              if string.contains(".") {
+                array.push_back(TokenValue::Float(string.parse().unwrap()))
+              } else {
+                array.push_back(TokenValue::Number(string.parse().unwrap()))
+              }
+            } else if ch == ']' {
+              input.read(next);
+              break;
+            }
+          }
+          ReaderResult::Some(Token::new(
+            TokenMeta::new_state_meta(current, next),
+            TokenValue::Array(array),
+          ))
+        } else {
+          ReaderResult::None
+        }
+      },
+      None => ReaderResult::None,
+    }
+  }
+}
+
+
 fn parse(tokens: LinkedList<Token>, state: Query) -> Query {
   let mut list = tokens.clone();
   match list.pop_front() {
@@ -437,7 +532,9 @@ fn parse(tokens: LinkedList<Token>, state: Query) -> Query {
             TokenValue::Operand(Operand::Lt) => Query::Lt { field: ident.clone(), value: val.value().clone().into() },
             TokenValue::Operand(Operand::LtE) => Query::LtE { field: ident.clone(), value: val.value().clone().into() },
             TokenValue::Operand(Operand::Rx) => Query::Rx { field: ident.clone(), value: val.value().clone().into() },
-            _ => Query::None
+            TokenValue::Operand(Operand::In) => Query::In { field: ident.clone(), value: val.value().clone().into() },
+            TokenValue::Operand(Operand::Contains) => Query::Contains { field: ident.clone(), value: val.value().clone().into() },
+            _ => Query::None,
           };
           parse(list, query)
         },
@@ -456,6 +553,7 @@ pub fn from_str(s: &str) -> Query {
     .add(OperatorReader)
     .add(IdentifierReader)
     .add(GroupedReader)
+    .add(ArrayReader)
     .build();
   let _lexer = readers.lexer(s.chars());
   let tokens: LinkedList<Token> = _lexer.map(Result::unwrap).collect();
@@ -463,24 +561,25 @@ pub fn from_str(s: &str) -> Query {
 }
 
 #[cfg(test)]
-mod parse_test {
+mod test {
   use crate::query::*;
   #[test]
   fn lexer_works() {
-    let squery = "deleted == false && _b.bah.h1 == 5 && (a == 5 || b < 5)";
+    let squery = "deleted == false && _b.bah.h1 == 5 && (a == 5 || b < 5) || c in ['1','2','3','4']";
     let query = parse::from_str(squery);
-    dbg!(&query);
     let q_r = Query::And { 
       left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
-      right: Box::new(Query::And { 
-        left: Box::new(Query::Eq { field: "_b.bah.h1".to_owned(), value: 5.into() }), 
-        right: Box::new(Query::Or { 
-          left: Box::new(Query::Eq { field: "a".to_owned(), value: 5.into() }), 
-          right: Box::new(Query::Lt { field: "b".to_owned(), value: 5.into() })
+      right: Box::new(Query::And {
+        left: Box::new(Query::Eq { field: "_b.bah.h1".to_owned(), value: 5.into() }),
+        right: Box::new(Query::Or {
+          left: Box::new(Query::Or {
+            left: Box::new(Query::Eq { field: "a".to_owned(), value: 5.into() }),
+            right: Box::new(Query::Lt { field: "b".to_owned(), value: 5.into() })
+          }),
+          right: Box::new(Query::In { field: "c".to_owned(), value: vec!["1".to_string(), "2".to_string(), "3".to_string(), "4".to_string()].into()})
         })
       })
     };
-    dbg!(&query, &q_r);
     assert_eq!(query, q_r);
   }
 }
