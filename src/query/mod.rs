@@ -268,5 +268,34 @@ mod test {
     assert_eq!(q, q_r);
   }
 
+  #[test]
+  fn complex_optional() {
+    let entity = Some(12);
+    let state = Some("Pending");
+    let currency_iso = Some("USD");
+    let q = query!(
+      (
+        ("deleted" == false && cond(entity.is_some()) ("source.id" == { entity.clone().unwrap() } || "destination.id" == { entity.clone().unwrap() } )) &&
+        cond(state.is_some()) "state" == { state.unwrap() }
+      ) && cond(currency_iso.is_some()) ("source.currency_iso" == { currency_iso.clone().unwrap() } || ("destination.currency_iso" == { currency_iso.clone().unwrap() }))
+    );
+    let q_r = Query::And {
+      left: Box::new(Query::And {
+        left: Box::new(Query::And {
+          left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
+          right: Box::new(Query::Or {
+            left: Box::new(Query::Eq { field: "source.id".to_owned(), value: 12.into() }),
+            right: Box::new(Query::Eq { field: "destination.id".to_owned(), value: 12.into() }),
+          })
+        }),
+        right: Box::new(Query::Eq { field: "state".to_owned(), value: "Pending".into() }),
+      }),
+      right: Box::new(Query::Or {
+        left: Box::new(Query::Eq { field: "source.currency_iso".to_owned(), value: "USD".to_owned().into() }),
+        right: Box::new(Query::Eq { field: "destination.currency_iso".to_owned(), value: "USD".to_owned().into() }),
+      })
+    };
+    assert_eq!(q, q_r);
+  }
 
 }
