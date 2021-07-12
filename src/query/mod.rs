@@ -145,14 +145,27 @@ macro_rules! query {
   ( $key:tt >= $value:expr; ) => {{ Query::LtE { field: $key.to_owned(), value: $value.into() } }};
   ( $key:tt %% $value:tt ) => {{ Query::Rx { field: $key.to_owned(), value: $value.into() } }};
   ( $key:tt %% $value:expr; ) => {{ Query::Rx { field: $key.to_owned(), value: $value.into() } }};
+
+  ( $key:tt $op:tt $value:tt && cond($condition:expr) $($rest:tt)+ ) => {{ if $condition { Query::And { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } } else { query!($key $op $value) } }};
+  ( $key:tt $op:tt $value:expr; && cond($condition:expr) $($rest:tt)+ ) => {{ if $condition { Query::And { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } } else { query!($key $op $value) } }};
+  ( $key:tt $op:tt $value:tt || cond($condition:expr) $($rest:tt)+ ) => {{ if $condition { Query::Or { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } } else { query!($key $op $value) } }};
+  ( $key:tt $op:tt $value:expr; || cond($condition:expr) $($rest:tt)+ ) => {{ if $condition { Query::Or { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } } else { query!($key $op $value) } }};
+
   ( $key:tt $op:tt $value:tt && $($rest:tt)+ ) => {{ Query::And { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } }};
   ( $key:tt $op:tt $value:expr; && $($rest:tt)+ ) => {{ Query::And { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } }};
   ( $key:tt $op:tt $value:tt || $($rest:tt)+ ) => {{ Query::Or { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } }};
   ( $key:tt $op:tt $value:expr; || $($rest:tt)+ ) => {{ Query::Or { left: Box::new(query!($key $op $value)), right: Box::new(query!($($rest)*)) } }};
+
+  ( ($($lhs:tt)+) && cond($condition:expr) $($rhs:tt)+ ) => {{ if $condition { Query::And { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } } else { query!($($lhs)*) } }};
+  ( ($($lhs:tt)+) || cond($condition:expr) $($rhs:tt)+ ) => {{ if $condition { Query::Or { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } } else { query!($($lhs)*) } }};
+  ( $($lhs:tt)+ && cond($condition:expr) ($($rhs:tt)+) ) => {{ if $condition { Query::And { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } } else { query!($($lhs)*) } }};
+  ( $($lhs:tt)+ || cond($condition:expr) ($($rhs:tt)+) ) => {{ if $condition { Query::Or { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } } else { query!($($lhs)*) } }};
+
   ( ($($lhs:tt)+) && $($rhs:tt)+ ) => {{ Query::And { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } }};
   ( ($($lhs:tt)+) || $($rhs:tt)+ ) => {{ Query::Or { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } }};
   ( $($lhs:tt)+ && ($($rhs:tt)+) ) => {{ Query::And { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } }};
   ( $($lhs:tt)+ || ($($rhs:tt)+) ) => {{ Query::Or { left: Box::new(query!($($lhs)*)), right: Box::new(query!($($rhs)*)) } }};
+
   ( ($($qq:tt)+) ) => {{ query!($($qq)*) }};
 }
 
@@ -197,4 +210,63 @@ mod test {
     };
     assert_eq!(q, q_r);
   }
+
+  #[test]
+  fn query_contains_optional_0() {
+    let q = query!("deleted" == false && cond(1==0) "countries" contains "za");
+    let q_r = Query::Eq { field: "deleted".to_owned(), value: false.into() };
+    assert_eq!(q, q_r);
+  }
+
+  #[test]
+  fn query_contains_optional_1() {
+    let q = query!("deleted" == false && cond(1==1) "countries" contains "za");
+    let q_r = Query::And {
+      left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
+      right: Box::new(Query::Contains { field: "countries".to_owned(), value: "za".to_owned().into() }),
+    };
+    assert_eq!(q, q_r);
+  }
+
+  #[test]
+  fn query_contains_optional_2() {
+    let q = query!("deleted" == false && cond(1==1) "countries" contains "za" || cond(1==0) "age" >= 21);
+    let q_r = Query::And {
+      left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
+      right: Box::new(Query::Contains { field: "countries".to_owned(), value: "za".to_owned().into() }),
+    };
+    assert_eq!(q, q_r);
+  }
+
+  #[test]
+  fn query_contains_optional_3() {
+    let q = query!("deleted" == false && cond(1==1) "countries" contains "za" || cond(1==1) "age" >= 21);
+    let q_r = Query::And {
+      left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
+      right: Box::new(Query::Or {
+        left: Box::new(Query::Contains { field: "countries".to_owned(), value: "za".to_owned().into() }),
+        right: Box::new(Query::GtE { field: "age".to_owned(), value: 21.into() })
+      }),
+    };
+    assert_eq!(q, q_r);
+  }
+
+  #[test]
+  fn query_contains_optional_4() {
+    let q = query!("deleted" == false && cond(1==0) "countries" contains "za" || cond(1==1) "age" >= 21);
+    let q_r = Query::Eq { field: "deleted".to_owned(), value: false.into() };
+    assert_eq!(q, q_r);
+  }
+
+  #[test]
+  fn query_contains_optional_5() {
+    let q = query!(("deleted" == false && cond(1==0) "countries" contains "za") || cond(1==1) "age" >= 21);
+    let q_r = Query::Or {
+      left: Box::new(Query::Eq { field: "deleted".to_owned(), value: false.into() }),
+      right: Box::new(Query::GtE { field: "age".to_owned(), value: 21.into() })
+    };
+    assert_eq!(q, q_r);
+  }
+
+
 }

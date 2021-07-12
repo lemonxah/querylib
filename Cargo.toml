@@ -1,7 +1,7 @@
 [package]
 name = "querylib"
 description = "Rust query language"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["lemonxah <lemon.xah@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
