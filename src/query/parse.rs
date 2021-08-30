@@ -423,7 +423,7 @@ impl Reader<Token, TokenError> for GroupedReader {
               input.read(next);
               break;
             } else {
-              match lexer::next(readers, input, next) {
+              match lexer::read(readers, input, next) {
                 Some(Ok(token)) => {
                   group.push_back(token);
                 },
@@ -555,7 +555,7 @@ pub fn from_str(s: &str) -> Query {
     .add(GroupedReader)
     .add(ArrayReader)
     .build();
-  let _lexer = readers.lexer(s.chars());
+  let _lexer = readers.read(s.chars());
   let tokens: LinkedList<Token> = _lexer.map(Result::unwrap).collect();
   parse(tokens, Query::None)
 }
