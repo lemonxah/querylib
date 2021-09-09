@@ -1,7 +1,7 @@
 [package]
 name = "querylib"
 description = "Rust query language"
-version = "0.3.4"
+version = "0.4.0"
 authors = ["lemonxah <lemon.xah@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -16,5 +16,5 @@ mongo = ["bson"]
 parse = ["lexer"]
 
 [dependencies]
-bson = { version = "1.2.0", optional = true }
+bson = { version = "2.0.0", optional = true }
 lexer = { version = "0.1.18", optional = true }
