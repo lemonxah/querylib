@@ -1,8 +1,11 @@
+use uuid::Uuid;
+
 #[cfg(feature = "parse")] pub mod parse;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+  Uuid(Uuid),
   Number(i64),
   Float(f64),
   String(String),
@@ -49,6 +52,12 @@ from_vec_value!(String);
 impl From<Vec<&str>> for Value {
   fn from(a: Vec<&str>) -> Value {
     Value::Array(Box::new(a.into_iter().map(|v| v.into()).collect::<Vec<Value>>()))
+  }
+}
+
+impl From<Uuid> for Value {
+  fn from(uuid: Uuid) -> Value {
+    Value::Uuid(uuid)
   }
 }
 
