@@ -10,7 +10,7 @@ documentation = "https://docs.rs/querylib/"
 repository = "https://github.com/lemonxah/querylib"
 
 [features]
-default = ["mongo"]
+default = []
 
 postgres = []
 mongo = ["bson"]
